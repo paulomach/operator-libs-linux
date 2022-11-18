@@ -81,7 +81,7 @@ LIBAPI = 1
 
 # Increment this PATCH version before using `charmcraft publish-lib` or reset
 # to 0 if you are raising the major API version
-LIBPATCH = 2
+LIBPATCH = 3
 
 
 def _cache_init(func):
@@ -288,6 +288,7 @@ class Snap(object):
         channel: Optional[str] = "",
         cohort: Optional[str] = "",
         leave_cohort: Optional[bool] = False,
+        hold: Optional[int] = None,
     ) -> None:
         """Refresh a snap.
 
@@ -295,6 +296,7 @@ class Snap(object):
           channel: the channel to install from
           cohort: optionally, specify a cohort.
           leave_cohort: leave the current cohort.
+          hold: hours interval to hold refresh, set zero to hold indefinitely.
         """
         channel = '--channel="{}"'.format(channel) if channel else ""
         args = [channel]
@@ -307,6 +309,9 @@ class Snap(object):
             args.append("--leave-cohort")
         elif cohort:
             args.append('--cohort="{}"'.format(cohort))
+
+        if hold or hold == 0:
+            args = ["--hold={}h".format(hold) if hold > 0 else "--hold"]
 
         self._snap("refresh", args)
 
@@ -325,6 +330,7 @@ class Snap(object):
         classic: Optional[bool] = False,
         channel: Optional[str] = "",
         cohort: Optional[str] = "",
+        hold: Optional[int] = None,
     ):
         """Ensures that a snap is in a given state.
 
@@ -333,6 +339,7 @@ class Snap(object):
           classic: an (Optional) boolean indicating whether classic confinement should be used
           channel: the channel to install from
           cohort: optional. Specify the key of a snap cohort.
+          hold: optional. Specify amount of hours to hold refresh or zero to hold indefinitely.
 
         Raises:
           SnapError if an error is encountered
@@ -354,7 +361,7 @@ class Snap(object):
                 self._install(channel, cohort)
             else:
                 # The snap is installed, but we are changing it (e.g., switching channels).
-                self._refresh(channel, cohort)
+                self._refresh(channel, cohort, hold=hold)
 
         self._state = state
 

@@ -358,6 +358,34 @@ class TestSnapBareMethods(unittest.TestCase):
             universal_newlines=True,
         )
 
+    @patch("charms.operator_libs_linux.v1.snap.subprocess")
+    def test_hold(self, mock_subprocess):
+
+        mock_subprocess.check_output = MagicMock()
+
+        curl = snap.add("curl", channel="latest")
+        curl.ensure(snap.SnapState.Latest, hold=0)
+        mock_subprocess.check_output.assert_called_with(
+            [
+                "snap",
+                "refresh",
+                "curl",
+                "--hold",
+            ],
+            universal_newlines=True,
+        )
+
+        curl.ensure(snap.SnapState.Latest, hold=72)
+        mock_subprocess.check_output.assert_called_with(
+            [
+                "snap",
+                "refresh",
+                "curl",
+                "--hold=72h",
+            ],
+            universal_newlines=True,
+        )
+
     @patch("charms.operator_libs_linux.v1.snap.subprocess.check_output")
     def test_can_ensure_states(self, mock_subprocess):
         mock_subprocess.return_value = 0
