@@ -8,6 +8,7 @@ from unittest.mock import MagicMock, mock_open, patch
 
 import fake_snapd as fake_snapd
 from charms.operator_libs_linux.v1 import snap
+from freezegun import freeze_time
 
 patch("charms.operator_libs_linux.v1.snap._cache_init", lambda x: x).start()
 
@@ -129,6 +130,12 @@ installed_result = r"""
         {
           "snap": "charmcraft",
           "name": "charmcraft"
+        },
+        {
+          "snap": "charmcraft",
+          "name": "foo_service",
+          "daemon": "simple",
+          "enabled": true
         }
       ],
       "contact": "",
@@ -277,6 +284,66 @@ class TestSnapCache(unittest.TestCase):
 
         foo.state = snap.SnapState.Absent
         mock_subprocess.assert_called_with(["snap", "remove", "foo"], universal_newlines=True)
+
+    @patch("charms.operator_libs_linux.v1.snap.subprocess.run")
+    def test_can_run_snap_daemon_commands(self, mock_subprocess):
+        mock_subprocess.return_value = MagicMock()
+        foo = snap.Snap("foo", snap.SnapState.Latest, "stable", "1", "classic")
+
+        foo.start(["bar", "baz"], enable=True)
+        mock_subprocess.assert_called_with(
+            ["snap", "start", "--enable", "foo.bar", "foo.baz"],
+            universal_newlines=True,
+            check=True,
+            capture_output=True,
+        )
+
+        foo.stop(["bar"])
+        mock_subprocess.assert_called_with(
+            ["snap", "stop", "foo.bar"],
+            universal_newlines=True,
+            check=True,
+            capture_output=True,
+        )
+
+        foo.stop()
+        mock_subprocess.assert_called_with(
+            ["snap", "stop", "foo"],
+            universal_newlines=True,
+            check=True,
+            capture_output=True,
+        )
+
+    @patch("charms.operator_libs_linux.v1.snap.SnapClient.get_installed_snap_apps")
+    def test_apps_property(self, patched):
+        s = SnapCacheTester()
+        s._snap_client.get_installed_snaps.return_value = json.loads(installed_result)["result"]
+        s._load_installed_snaps()
+
+        patched.return_value = json.loads(installed_result)["result"][0]["apps"]
+        self.assertEqual(len(s["charmcraft"].apps), 2)
+        self.assertIn({"snap": "charmcraft", "name": "charmcraft"}, s["charmcraft"].apps)
+
+    @patch("charms.operator_libs_linux.v1.snap.SnapClient.get_installed_snap_apps")
+    def test_services_property(self, patched):
+        s = SnapCacheTester()
+        s._snap_client.get_installed_snaps.return_value = json.loads(installed_result)["result"]
+        s._load_installed_snaps()
+
+        patched.return_value = json.loads(installed_result)["result"][0]["apps"]
+        self.assertEqual(len(s["charmcraft"].services), 1)
+        self.assertDictEqual(
+            s["charmcraft"].services,
+            {
+                "foo_service": {
+                    "daemon": "simple",
+                    "enabled": True,
+                    "active": False,
+                    "daemon_scope": None,
+                    "activators": [],
+                }
+            },
+        )
 
 
 class TestSocketClient(unittest.TestCase):
@@ -439,3 +506,72 @@ class TestSnapBareMethods(unittest.TestCase):
                 ["snap", "set", "foo", 'qux="quux"', 'bar="baz"'],
                 universal_newlines=True,
             )
+
+    @patch("charms.operator_libs_linux.v1.snap.subprocess.check_call")
+    def test_system_set(self, mock_subprocess):
+        snap._system_set("refresh.hold", "foobar")
+        mock_subprocess.assert_called_with(
+            ["snap", "set", "system", "refresh.hold=foobar"],
+            universal_newlines=True,
+        )
+
+    @patch("charms.operator_libs_linux.v1.snap.subprocess.check_call")
+    def test_system_set_fail(self, mock_subprocess):
+        mock_subprocess.side_effect = CalledProcessError(1, "foobar")
+        try:
+            snap._system_set("refresh.hold", "foobar")
+        except snap.SnapError as e:
+            self.assertEqual(str(e), "Failed setting system config 'refresh.hold' to 'foobar'")
+
+    def test_hold_refresh_invalid_too_high(self):
+        try:
+            snap.hold_refresh(days=120)
+        except ValueError as e:
+            self.assertEqual(str(e), "days must be an int between 1 and 90")
+
+    def test_hold_refresh_invalid_non_int(self):
+        try:
+            snap.hold_refresh(days="foobar")
+        except ValueError as e:
+            self.assertEqual(str(e), "days must be an int between 1 and 90")
+
+    @patch("charms.operator_libs_linux.v1.snap.subprocess.check_call")
+    def test_hold_refresh_reset(self, mock_subprocess):
+        snap.hold_refresh(days=0)
+        mock_subprocess.assert_called_with(
+            ["snap", "set", "system", "refresh.hold="],
+            universal_newlines=True,
+        )
+
+    @freeze_time("1970-01-01")
+    @patch("charms.operator_libs_linux.v1.snap.subprocess.check_call")
+    def test_hold_refresh_valid_days(self, mock_subprocess):
+        snap.hold_refresh(days=90)
+        mock_subprocess.assert_called_with(
+            ["snap", "set", "system", "refresh.hold=1970-04-01T00:00:00+00:00"],
+            universal_newlines=True,
+        )
+
+    @patch("charms.operator_libs_linux.v1.snap.subprocess.check_output")
+    def test_install_local(self, mock_subprocess):
+        mock_subprocess.return_value = "curl XXX installed"
+        snap.install_local("./curl.snap")
+        mock_subprocess.assert_called_with(
+            ["snap", "install", "./curl.snap"],
+            universal_newlines=True,
+        )
+
+    @patch("charms.operator_libs_linux.v1.snap.subprocess.check_output")
+    def test_install_local_args(self, mock_subprocess):
+        mock_subprocess.return_value = "curl XXX installed"
+        for kwargs, cmd_args in [
+            ({"classic": True}, ["--classic"]),
+            ({"dangerous": True}, ["--dangerous"]),
+            ({"classic": True, "dangerous": True}, ["--classic", "--dangerous"]),
+        ]:
+            snap.install_local("./curl.snap", **kwargs)
+            mock_subprocess.assert_called_with(
+                ["snap", "install", "./curl.snap"] + cmd_args,
+                universal_newlines=True,
+            )
+            mock_subprocess.reset_mock()

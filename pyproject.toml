@@ -8,7 +8,7 @@ show_missing = true
 # Formatting tools configuration
 [tool.black]
 line-length = 99
-target-version = ["py38"]
+target-version = ["py35"]
 
 [tool.isort]
 profile = "black"
@@ -17,7 +17,7 @@ profile = "black"
 [tool.flake8]
 max-line-length = 99
 max-doc-length = 99
-max-complexity = 13
+max-complexity = 14
 exclude = [".git", "__pycache__", ".tox", "build", "dist", "*.egg_info", "venv"]
 select = ["E", "W", "F", "C", "N", "R", "D", "H"]
 # Ignore W503, E501 because using black creates errors with this

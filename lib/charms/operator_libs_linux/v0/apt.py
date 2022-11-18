@@ -355,7 +355,7 @@ class DebianPackage:
 
         Args:
             package: a string representing the package
-            version: an optional string if a specific version isr equested
+            version: an optional string if a specific version is requested
             arch: an optional architecture, defaulting to `dpkg --print-architecture`. If an
                 architecture is not specified, this will be used for selection.
 
@@ -388,7 +388,7 @@ class DebianPackage:
 
         Args:
             package: a string representing the package
-            version: an optional string if a specific version isr equested
+            version: an optional string if a specific version is requested
             arch: an optional architecture, defaulting to `dpkg --print-architecture`.
                 If an architecture is not specified, this will be used for selection.
         """
@@ -458,7 +458,7 @@ class DebianPackage:
 
         Args:
             package: a string representing the package
-            version: an optional string if a specific version isr equested
+            version: an optional string if a specific version is requested
             arch: an optional architecture, defaulting to `dpkg --print-architecture`.
                 If an architecture is not specified, this will be used for selection.
         """
@@ -514,7 +514,7 @@ class Version:
     """An abstraction around package versions.
 
     This seems like it should be strictly unnecessary, except that `apt_pkg` is not usable inside a
-    venv, and wedging version comparisions into `DebianPackage` would overcomplicate it.
+    venv, and wedging version comparisons into `DebianPackage` would overcomplicate it.
 
     This class implements the algorithm found here:
     https://www.debian.org/doc/debian-policy/ch-controlfields.html#version
@@ -736,7 +736,9 @@ def add_package(
         update_cache: whether or not to run `apt-get update` prior to operating
 
     Raises:
+        TypeError if no package name is given, or explicit version is set for multiple packages
         PackageNotFoundError if the package is not in the cache.
+        PackageError if packages fail to install
     """
     cache_refreshed = False
     if update_cache:
@@ -1003,7 +1005,7 @@ class DebianRepository:
         A Radix64 format keyid is also supported for backwards
         compatibility. In this case Ubuntu keyserver will be
         queried for a key via HTTPS by its keyid. This method
-        is less preferrable because https proxy servers may
+        is less preferable because https proxy servers may
         require traffic decryption which is equivalent to a
         man-in-the-middle attack (a proxy server impersonates
         keyserver TLS certificates and has to be explicitly

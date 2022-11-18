@@ -4,7 +4,10 @@
 
 
 import logging
+from datetime import datetime, timedelta
+from subprocess import CalledProcessError, check_output
 
+import pytest
 from charms.operator_libs_linux.v1 import snap
 from helpers import get_command_path
 
@@ -96,3 +99,65 @@ def test_snap_ensure():
 def test_new_snap_ensure():
     vlc = snap.SnapCache()["vlc"]
     vlc.ensure(snap.SnapState.Latest, channel="edge")
+
+
+def test_snap_start():
+    cache = snap.SnapCache()
+    kp = cache["kube-proxy"]
+    kp.ensure(snap.SnapState.Latest, classic=True, channel="latest/stable")
+
+    assert kp.services
+    kp.start()
+    assert kp.services["daemon"]["active"] is not False
+
+    with pytest.raises(snap.SnapError):
+        kp.start(["foobar"])
+
+
+def test_snap_stop():
+    cache = snap.SnapCache()
+    kp = cache["kube-proxy"]
+    kp.ensure(snap.SnapState.Latest, classic=True, channel="latest/stable")
+
+    kp.stop(["daemon"], disable=True)
+    assert kp.services["daemon"]["active"] is False
+    assert kp.services["daemon"]["enabled"] is False
+
+
+def test_snap_logs():
+    cache = snap.SnapCache()
+    kp = cache["kube-proxy"]
+    kp.ensure(snap.SnapState.Latest, classic=True, channel="latest/stable")
+
+    # Terrible means of populating logs
+    kp.start()
+    kp.stop()
+    kp.start()
+    kp.stop()
+
+    assert len(kp.logs(num_lines=15).splitlines()) == 15
+
+
+def test_snap_restart():
+    cache = snap.SnapCache()
+    kp = cache["kube-proxy"]
+    kp.ensure(snap.SnapState.Latest, classic=True, channel="latest/stable")
+
+    try:
+        kp.restart()
+    except CalledProcessError as e:
+        pytest.fail(e.stderr)
+
+
+def test_hold_refresh():
+    hold_date = (datetime.now() + timedelta(days=90)).strftime("%Y-%m-%d")
+    snap.hold_refresh()
+    result = check_output(["snap", "refresh", "--time"])
+    assert f"hold: {hold_date}" in result.decode()
+
+
+def test_reset_hold_refresh():
+    snap.hold_refresh()
+    snap.hold_refresh(0)
+    result = check_output(["snap", "refresh", "--time"])
+    assert "hold: " not in result.decode()
