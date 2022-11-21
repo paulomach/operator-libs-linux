@@ -67,7 +67,6 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from collections.abc import Mapping
-from datetime import datetime, timedelta, timezone
 from enum import Enum
 from subprocess import CalledProcessError, CompletedProcess
 from typing import Any, Dict, Iterable, List, Optional, Union
@@ -108,7 +107,7 @@ class SnapService:
         enabled: bool = False,
         active: bool = False,
         activators: List[str] = [],
-        **kwargs
+        **kwargs,
     ):
         self.daemon = daemon
         self.daemon_scope = kwargs.get("daemon-scope", None) or daemon_scope
@@ -623,7 +622,7 @@ class SnapClient:
         """Make a JSON request to the Snapd server with the given HTTP method and path.
 
         If query dict is provided, it is encoded and appended as a query string
-        to the URL. If body dict is provided, it is serialied as JSON and used
+        to the URL. If body dict is provided, it is serialized as JSON and used
         as the HTTP body (with Content-Type: "application/json"). The resulting
         body is decoded from JSON.
         """
@@ -924,39 +923,19 @@ def install_local(
         raise SnapError("Could not install snap {}: {}".format(filename, e.output))
 
 
-def _system_set(config_item: str, value: str) -> None:
-    """Helper for setting snap system config values.
-
-    Args:
-        config_item: name of snap system setting. E.g. 'refresh.hold'
-        value: value to assign
-    """
-    _cmd = ["snap", "set", "system", "{}={}".format(config_item, value)]
-    try:
-        subprocess.check_call(_cmd, universal_newlines=True)
-    except CalledProcessError:
-        raise SnapError("Failed setting system config '{}' to '{}'".format(config_item, value))
-
-
-def hold_refresh(days: int = 90) -> bool:
+def hold_refresh(hours: Optional[int] = None) -> bool:
     """Set the system-wide snap refresh hold.
 
     Args:
-        days: number of days to hold system refreshes for. Maximum 90. Set to zero to remove hold.
+        hours: number of hours to hold system refreshes for. Set to zero to hold indefinitely.
     """
-    # Currently the snap daemon can only hold for a maximum of 90 days
-    if not isinstance(days, int) or days > 90:
-        raise ValueError("days must be an int between 1 and 90")
-    elif days == 0:
-        _system_set("refresh.hold", "")
-        logger.info("Removed system-wide snap refresh hold")
-    else:
-        # Add the number of days to current time
-        target_date = datetime.now(timezone.utc).astimezone() + timedelta(days=days)
-        # Format for the correct datetime format
-        hold_date = target_date.strftime("%Y-%m-%dT%H:%M:%S%z")
-        # Python dumps the offset in format '+0100', we need '+01:00'
-        hold_date = "{0}:{1}".format(hold_date[:-2], hold_date[-2:])
-        # Actually set the hold date
-        _system_set("refresh.hold", hold_date)
-        logger.info("Set system-wide snap refresh hold to: %s", hold_date)
+    if hours and (type(hours) != int or hours < 0):
+        raise ValueError("hours must be greater than zero")
+
+    _cmd = ["snap", "refresh"]
+    _cmd.append("--hold={}h".format(hours) if hours else "--hold")
+
+    try:
+        subprocess.check_call(_cmd, universal_newlines=True)
+    except CalledProcessError:
+        raise SnapError("Failed to set refresh hold")
